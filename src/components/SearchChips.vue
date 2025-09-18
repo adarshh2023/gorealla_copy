@@ -1,34 +1,21 @@
 <template>
   <div class="search-chips-container">
-    <q-input
+    <!-- Unified Voice Search Component -->
+    <UnifiedVoiceSearch
       ref="searchInput"
       v-model="inputText"
-      outlined
-      dense
-      filled
       :placeholder="placeholder"
-      @keydown.enter="addChip"
+      :outlined="true"
+      :dense="true"
+      :voice-enabled="true"
+      :keywords="availableKeywords"
+      :auto-search="false"
+      @search="handleVoiceSearch"
+      @voice-result="handleVoiceResult"
+      @keyup.enter="addChip"
       class="search-input"
     >
-      <!-- Chips display inside input -->
-      <!-- <template v-slot:prepend v-if="keywords.length > 0">
-        <div class="chips-container">
-          <q-chip
-            v-for="(keyword, index) in keywords"
-            :key="index"
-            removable
-            @remove="removeChip(index)"
-            color="primary"
-            text-color="white"
-            size="md"
-            class="q-ma-xs"
-          >
-            {{ keyword }}
-          </q-chip>
-        </div>
-      </template> -->
-
-      <!-- Search icon on the right -->
+      <!-- Search button in append slot -->
       <template v-slot:append>
         <q-btn
           round
@@ -42,7 +29,7 @@
           <q-tooltip>Search</q-tooltip>
         </q-btn>
       </template>
-    </q-input>
+    </UnifiedVoiceSearch>
 
     <!-- Alternative layout: Chips outside input (uncomment if preferred) -->
     <div v-if="keywords.length > 0" class="chips-outside q-mt-sm">
@@ -63,9 +50,14 @@
 
 <script>
 import { defineComponent, ref } from 'vue'
+import UnifiedVoiceSearch from './UnifiedVoiceSearch.vue'
 
 export default defineComponent({
   name: 'SearchChips',
+
+  components: {
+    UnifiedVoiceSearch
+  },
 
   props: {
     placeholder: {
@@ -83,6 +75,10 @@ export default defineComponent({
     clearOnSearch: {
       type: Boolean,
       default: false
+    },
+    availableKeywords: {
+      type: Array,
+      default: () => ["Wing B", "201", "301", "Living Room", "Kitchen","2nd Floor","Master Bedroom","Bonding Coat Application","Wing A"],
     }
   },
 
@@ -92,6 +88,17 @@ export default defineComponent({
     const inputText = ref('')
     const keywords = ref([])
     const searchInput = ref(null)
+
+    const handleVoiceSearch = (query) => {
+      // Handle voice search - could add as chip or trigger search directly
+      inputText.value = query
+      addChip()
+    }
+
+    const handleVoiceResult = (result) => {
+      console.log('Voice result received:', result)
+      // Could emit this to parent for additional processing
+    }
 
     const addChip = () => {
       const trimmedText = inputText.value.trim()
@@ -168,7 +175,9 @@ export default defineComponent({
       performSearch,
       clearAll,
       getKeywords,
-      setKeywords
+      setKeywords,
+      handleVoiceSearch,
+      handleVoiceResult
     }
   }
 })
