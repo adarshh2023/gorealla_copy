@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Gorealla</string>
+    <string name="title_activity_main">Gorealla</string>
+    <string name="package_name">com.heptanesia.gorealla</string>
+    <string name="custom_url_scheme">com.heptanesia.gorealla</string>
+</resources>

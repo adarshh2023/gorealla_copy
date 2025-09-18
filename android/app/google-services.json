@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "564055391492",
+    "project_id": "gorealla-41b32",
+    "storage_bucket": "gorealla-41b32.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:564055391492:android:898d15c2200422478d6451",
+        "android_client_info": {
+          "package_name": "com.heptanesia.gorealla"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCaFdLbg3jSgCbHHJkWvkrTnzcq8rVa6eM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
