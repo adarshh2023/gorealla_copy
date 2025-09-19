@@ -1,435 +1,170 @@
 <template>
   <div class="gallery-tab">
-    <!-- Gallery Toolbar -->
-    <div class="gallery-toolbar">
-      <div class="toolbar-left">
-        <!-- Camera Button (Mobile Only) -->
-        <q-btn
-          v-if="isNativePlatform"
-          color="secondary"
-          icon="photo_camera"
-          label="Camera"
-          size="sm"
-          @click="openCameraOptions"
-          class="q-mr-sm"
-        />
+    <!-- Gallery Actions Header -->
+    <div class="gallery-actions">
+      <div class="actions-left">
+        <q-btn-group>
+          <q-btn
+            icon="add"
+            label="Add Media"
+            color="primary"
+            @click="showMediaOptions = !showMediaOptions"
+          >
+            <q-menu v-model="showMediaOptions">
+              <q-list style="min-width: 200px">
+                <q-item clickable v-close-popup @click="triggerFileUpload">
+                  <q-item-section avatar>
+                    <q-icon name="upload_file" />
+                  </q-item-section>
+                  <q-item-section>Upload Files</q-item-section>
+                </q-item>
 
-        <!-- Upload Button -->
-        <q-btn
-          color="primary"
-          icon="cloud_upload"
-          size="sm"
-          @click="triggerFileUpload"
-          :loading="galleryStore.uploading"
-        />
+                <q-separator />
 
-        <!-- Hidden File Input -->
-        <input
-          ref="fileInput"
-          type="file"
-          multiple
-          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
-          style="display: none"
-          @change="handleFileSelection"
-        />
+                <!-- Camera Options (only on mobile) -->
+                <template v-if="isNativePlatform">
+                  <q-item clickable v-close-popup @click="captureFromCamera('rear')">
+                    <q-item-section avatar>
+                      <q-icon name="photo_camera" />
+                    </q-item-section>
+                    <q-item-section>Rear Camera</q-item-section>
+                  </q-item>
 
-        <!-- View Mode Toggle -->
-        <q-btn-toggle
-          v-model="viewMode"
-          toggle-color="primary"
-          :options="[
-            { icon: 'grid_view', value: 'grid', slot: 'grid' },
-            { icon: 'view_list', value: 'list', slot: 'list' }
-          ]"
-          size="sm"
-          class="q-ml-sm"
-        />
+                  <q-item clickable v-close-popup @click="captureFromCamera('front')">
+                    <q-item-section avatar>
+                      <q-icon name="camera_front" />
+                    </q-item-section>
+                    <q-item-section>Front Camera</q-item-section>
+                  </q-item>
+
+                  <!-- Video Recording Option -->
+                  <q-item clickable v-close-popup @click="startVideoRecording">
+                    <q-item-section avatar>
+                      <q-icon name="videocam" />
+                    </q-item-section>
+                    <q-item-section>Record Video</q-item-section>
+                  </q-item>
+
+                  <q-separator />
+                </template>
+
+                <q-item clickable v-close-popup @click="captureFromGallery">
+                  <q-item-section avatar>
+                    <q-icon name="photo_library" />
+                  </q-item-section>
+                  <q-item-section>From Gallery</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </q-btn-group>
+
+        <q-btn-group>
+          <q-btn
+            :icon="viewMode === 'grid' ? 'view_list' : 'view_module'"
+            :label="viewMode === 'grid' ? 'List View' : 'Grid View'"
+            flat
+            @click="toggleViewMode"
+          />
+        </q-btn-group>
       </div>
 
-      <div class="toolbar-right">
-        <!-- Search -->
+      <div class="actions-right">
         <q-input
           v-model="searchTerm"
-          placeholder="Search files..."
+          placeholder="Search media..."
           dense
           outlined
-          style="min-width: 200px"
-          @update:model-value="handleSearch"
+          class="search-input"
         >
           <template v-slot:prepend>
             <q-icon name="search" />
           </template>
-          <template v-slot:append>
-            <q-icon
-              v-if="searchTerm"
-              name="clear"
-              class="cursor-pointer"
-              @click="clearSearch"
-            />
+          <template v-slot:append v-if="searchTerm">
+            <q-icon name="clear" class="cursor-pointer" @click="searchTerm = ''" />
           </template>
         </q-input>
 
-        <!-- Filter Menu -->
-        <q-btn
+        <q-btn-dropdown
           icon="filter_list"
           flat
-          round
-          dense
-          size="sm"
-          class="q-ml-sm"
+          label="Filter"
         >
-          <q-menu>
-            <q-list style="min-width: 200px">
-              <!-- Media Type Filter -->
-              <q-item-label header>Media Type</q-item-label>
-              <q-item
-                v-for="type in mediaTypeOptions"
-                :key="type.value"
-                clickable
-                v-close-popup
-                @click="setFilter('mediaType', type.value)"
-              >
-                <q-item-section avatar>
-                  <q-icon :name="type.icon" />
-                </q-item-section>
-                <q-item-section>{{ type.label }}</q-item-section>
-                <q-item-section side v-if="filters.mediaType === type.value">
-                  <q-icon name="check" color="primary" />
-                </q-item-section>
-              </q-item>
+          <div class="q-pa-md" style="min-width: 200px">
+            <div class="text-subtitle2 q-mb-sm">Media Type</div>
+            <q-option-group
+              v-model="selectedMediaTypes"
+              :options="mediaTypeOptions"
+              color="primary"
+              type="checkbox"
+            />
 
-              <q-separator />
-
-              <!-- Category Filter -->
-              <q-item-label header>Category</q-item-label>
-              <q-item
-                v-for="category in categoryOptions"
-                :key="category.value"
-                clickable
-                v-close-popup
-                @click="setFilter('mediaCategory', category.value)"
-              >
-                <q-item-section avatar>
-                  <q-icon :name="category.icon" :color="category.color" />
-                </q-item-section>
-                <q-item-section>{{ category.label }}</q-item-section>
-                <q-item-section side v-if="filters.mediaCategory === category.value">
-                  <q-icon name="check" color="primary" />
-                </q-item-section>
-              </q-item>
-
-              <q-separator />
-
-              <!-- Clear Filters -->
-              <q-item clickable v-close-popup @click="clearFilters">
-                <q-item-section avatar>
-                  <q-icon name="clear_all" />
-                </q-item-section>
-                <q-item-section>Clear Filters</q-item-section>
-              </q-item>
-            </q-list>
-          </q-menu>
-        </q-btn>
-
-        <!-- More Options -->
-        <q-btn
-          icon="more_vert"
-          flat
-          round
-          dense
-          size="sm"
-          class="q-ml-sm"
-        >
-          <q-menu>
-            <q-list>
-              <q-item clickable v-close-popup @click="refreshGallery">
-                <q-item-section avatar>
-                  <q-icon name="refresh" />
-                </q-item-section>
-                <q-item-section>Refresh</q-item-section>
-              </q-item>
-
-              <q-item clickable v-close-popup @click="selectAllVisible">
-                <q-item-section avatar>
-                  <q-icon name="select_all" />
-                </q-item-section>
-                <q-item-section>Select All</q-item-section>
-              </q-item>
-
-              <q-item clickable v-close-popup @click="clearSelection" :disable="!hasSelectedItems">
-                <q-item-section avatar>
-                  <q-icon name="deselect" />
-                </q-item-section>
-                <q-item-section>Clear Selection</q-item-section>
-              </q-item>
-            </q-list>
-          </q-menu>
-        </q-btn>
+            <div class="text-subtitle2 q-mt-md q-mb-sm">Category</div>
+            <q-option-group
+              v-model="selectedCategories"
+              :options="categoryOptions"
+              color="primary"
+              type="checkbox"
+            />
+          </div>
+        </q-btn-dropdown>
       </div>
     </div>
 
-    <!-- Selection Actions Bar -->
-    <div v-if="hasSelectedItems" class="selection-bar">
-      <div class="selection-info">
-        <q-icon name="check_circle" color="primary" />
-        <span class="q-ml-sm">{{ selectedItemsCount }} item(s) selected</span>
-      </div>
-
-      <div class="selection-actions">
-        <q-btn
-          icon="folder"
-          label="Move to Category"
-          size="sm"
-          flat
-          @click="showCategoryDialog = true"
-        />
-
-        <q-btn
-          icon="visibility"
-          label="Make Public"
-          size="sm"
-          flat
-          @click="bulkUpdateVisibility(true)"
-        />
-
-        <q-btn
-          icon="visibility_off"
-          label="Make Private"
-          size="sm"
-          flat
-          @click="bulkUpdateVisibility(false)"
-        />
-
-        <q-btn
-          icon="delete"
-          label="Delete"
-          size="sm"
-          flat
-          color="negative"
-          @click="confirmBulkDelete"
-        />
-      </div>
-    </div>
-
-    <!-- Upload Progress -->
-    <div v-if="galleryStore.uploading" class="upload-progress">
-      <q-linear-progress
-        :value="uploadProgress.percentage / 100"
-        color="primary"
-        size="4px"
-      />
-      <div class="upload-status q-pa-sm">
-        <span v-if="uploadProgress.currentFile">
-          Uploading: {{ uploadProgress.currentFile }}
-        </span>
-        <span v-else>
-          {{ uploadProgress.completed }}/{{ uploadProgress.total }} files uploaded
-        </span>
-      </div>
-    </div>
-
-    <!-- Camera Options Dialog -->
-    <q-dialog v-model="showCameraOptions">
-      <q-card style="min-width: 300px">
-        <q-card-section>
-          <div class="text-h6">Take Photo</div>
-        </q-card-section>
-
-        <q-card-section class="q-pt-none">
-          <q-list>
-            <q-item clickable v-close-popup @click="captureFromCamera('rear')">
-              <q-item-section avatar>
-                <q-icon name="camera_rear" color="primary" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>Back Camera</q-item-label>
-                <q-item-label caption>Use rear camera</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-item clickable v-close-popup @click="captureFromCamera('front')">
-              <q-item-section avatar>
-                <q-icon name="camera_front" color="primary" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>Front Camera</q-item-label>
-                <q-item-label caption>Use front camera</q-item-label>
-              </q-item-section>
-            </q-item>
-
-            <q-separator />
-
-            <q-item clickable v-close-popup @click="captureFromGallery">
-              <q-item-section avatar>
-                <q-icon name="photo_library" color="secondary" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>Photo Library</q-item-label>
-                <q-item-label caption>Choose from gallery</q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
-    <!-- Drag & Drop Zone -->
-    <div
-      class="gallery-content"
-      :class="{ 'drag-over': isDragOver }"
-      @dragover.prevent="handleDragOver"
-      @dragenter.prevent="handleDragEnter"
-      @dragleave.prevent="handleDragLeave"
-      @drop.prevent="handleDrop"
-    >
+    <!-- Gallery Content -->
+    <div class="gallery-content">
       <!-- Loading State -->
-      <div v-if="galleryStore.loading" class="loading-state">
-        <q-spinner-dots size="48px" color="primary" />
-        <p class="text-grey-6 q-mt-md">Loading gallery...</p>
+      <div v-if="galleryStore.isLoading" class="loading-container">
+        <q-spinner-dots size="40px" color="primary" />
+        <p>Loading gallery...</p>
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="filteredItems.length === 0 && !searchTerm && !hasActiveFilters" class="empty-state">
-        <q-icon name="photo_library" size="64px" color="grey-5" />
-        <p class="text-h6 text-grey-6 q-mt-md">No files uploaded yet</p>
-        <p class="text-grey-5">
-          {{ isNativePlatform ? 'Take photos or upload files' : 'Drag and drop files here or click upload button' }}
-        </p>
-        <div class="empty-actions">
-          <q-btn
-            v-if="isNativePlatform"
-            color="secondary"
-            icon="photo_camera"
-            label="Take Photo"
-            class="q-mr-md q-mt-md"
-            @click="openCameraOptions"
-          />
-          <q-btn
-            color="primary"
-            icon="cloud_upload"
-            label="Upload Files"
-            class="q-mt-md"
-            @click="triggerFileUpload"
-          />
-        </div>
-      </div>
-
-      <!-- No Results State -->
       <div v-else-if="filteredItems.length === 0" class="empty-state">
-        <q-icon name="search_off" size="64px" color="grey-5" />
-        <p class="text-h6 text-grey-6 q-mt-md">No files found</p>
-        <p class="text-grey-5">Try adjusting your search or filters</p>
+        <q-icon name="photo_library" size="64px" color="grey-5" />
+        <h5>No media files</h5>
+        <p>Upload photos, videos, or documents to get started</p>
         <q-btn
-          flat
-          label="Clear Filters"
-          @click="clearAllFilters"
-          class="q-mt-md"
-        />
-      </div>
-
-      <!-- Gallery Grid/List -->
-      <div v-else class="gallery-view" :class="`gallery-${viewMode}`">
-        <!-- Grid View -->
-        <template v-if="viewMode === 'grid'">
-          <div
-            v-for="item in filteredItems"
-            :key="item.recCode"
-            class="gallery-item-wrapper"
-          >
-            <GalleryItem
-              :item="item"
-              :selected="selectedItems.includes(item.recCode)"
-              :view-mode="viewMode"
-              @click="handleItemClick"
-              @select="handleItemSelect"
-              @view="handleItemView"
-              @download="handleItemDownload"
-              @delete="handleItemDelete"
-              @edit="handleItemEdit"
-            />
-          </div>
-        </template>
-
-        <!-- List View -->
-        <template v-else>
-          <q-list separator>
-            <GalleryItem
-              v-for="item in filteredItems"
-              :key="item.recCode"
-              :item="item"
-              :selected="selectedItems.includes(item.recCode)"
-              :view-mode="viewMode"
-              @click="handleItemClick"
-              @select="handleItemSelect"
-              @view="handleItemView"
-              @download="handleItemDownload"
-              @delete="handleItemDelete"
-              @edit="handleItemEdit"
-            />
-          </q-list>
-        </template>
-      </div>
-
-      <!-- Load More Button -->
-      <div v-if="hasMoreItems" class="load-more-container q-pa-md text-center">
-        <q-btn
-          label="Load More"
           color="primary"
-          flat
-          icon="expand_more"
-          @click="loadMore"
-          :loading="galleryStore.loading"
+          icon="add"
+          label="Add Media"
+          @click="showMediaOptions = true"
         />
       </div>
 
-      <!-- Drag Overlay -->
-      <div v-if="isDragOver" class="drag-overlay">
-        <div class="drag-content">
-          <q-icon name="cloud_upload" size="64px" color="primary" />
-          <p class="text-h6 text-primary q-mt-md">Drop files to upload</p>
-        </div>
+      <!-- Gallery Items -->
+      <div v-else :class="viewMode === 'grid' ? 'gallery-grid' : 'gallery-list'">
+        <GalleryItem
+          v-for="item in filteredItems"
+          :key="item.recCode"
+          :item="item"
+          :view-mode="viewMode"
+          @click="handleItemClick(item)"
+          @edit="handleItemEdit(item)"
+          @delete="handleItemDelete(item)"
+        />
       </div>
     </div>
 
-    <!-- Category Dialog -->
-    <q-dialog v-model="showCategoryDialog">
-      <q-card style="min-width: 300px">
-        <q-card-section>
-          <div class="text-h6">Move to Category</div>
-        </q-card-section>
-
-        <q-card-section class="q-pt-none">
-          <q-select
-            v-model="selectedCategory"
-            :options="categoryOptions"
-            label="Select Category"
-            emit-value
-            map-options
-            filled
-          />
-        </q-card-section>
-
-        <q-card-actions align="right">
-          <q-btn flat label="Cancel" v-close-popup />
-          <q-btn flat label="Move" color="primary" @click="bulkUpdateCategory" v-close-popup />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <!-- Hidden File Input -->
+    <input
+      ref="fileInput"
+      type="file"
+      multiple
+      accept="*/*"
+      style="display: none"
+      @change="handleFileSelection"
+    />
 
     <!-- Media Viewer Dialog -->
-    <MediaViewer
+    <EnhancedMediaViewer
       v-if="showMediaViewer"
       v-model="showMediaViewer"
       :item="selectedViewItem"
       :items="filteredItems"
-      @navigate="handleViewerNavigate"
+      :current-index="selectedViewIndex"
       @close="handleViewerClose"
-      @delete="handleItemDelete"
-      @edit="handleItemEdit"
+      @navigate="handleViewerNavigate"
     />
 
     <!-- Edit Media Dialog -->
@@ -450,6 +185,119 @@
       @saved="handleCameraCaptureSaved"
       @close="handleCameraCaptureClose"
     />
+
+    <!-- Video Recording Dialog -->
+    <q-dialog
+      v-model="showVideoRecordingDialog"
+      maximized
+      persistent
+      class="video-recording-dialog"
+    >
+      <VideoRecordingInterface
+        v-model="showVideoRecordingDialog"
+        @recording-complete="handleVideoRecordingComplete"
+        @close="handleVideoRecordingClose"
+      />
+    </q-dialog>
+
+    <!-- Video Upload Dialog -->
+    <q-dialog
+      v-model="showVideoUploadDialog"
+      maximized
+      class="video-upload-dialog"
+    >
+      <div class="video-upload-container">
+        <div class="video-upload-header">
+          <h5>Upload Video</h5>
+          <q-btn icon="close" flat round dense color="white" v-close-popup />
+        </div>
+
+        <div class="video-upload-content">
+          <div class="video-preview-section">
+            <div class="video-preview-container">
+              <video
+  v-if="recordedVideoData"
+  :src="recordedVideoData.videoUrl"
+  class="preview-video"
+  controls
+  preload="metadata"
+  @loadeddata="handleVideoLoaded"
+>
+  Your browser does not support the video tag.
+</video>
+              
+              <!-- Video Info -->
+              <div class="video-info">
+                <div class="info-item">
+                  <q-icon name="schedule" />
+                  <span>Duration: {{ formatDuration(recordedVideoData?.duration || 0) }}</span>
+                </div>
+                <div class="info-item">
+                  <q-icon name="flag" />
+                  <span>Flags: {{ recordedVideoData?.metadata?.flags?.length || 0 }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="video-form-section">
+            <q-form @submit="handleVideoUpload" class="video-form">
+              <div class="form-group">
+                <q-input
+                  v-model="videoUploadForm.caption"
+                  label="Caption"
+                  outlined
+                  rows="3"
+                  type="textarea"
+                  placeholder="Add a caption for this video..."
+                />
+              </div>
+
+              <div class="form-group">
+                <q-select
+                  v-model="videoUploadForm.category"
+                  :options="categoryOptions"
+                  option-value="value"
+                  option-label="label"
+                  label="Category"
+                  outlined
+                  emit-value
+                  map-options
+                />
+              </div>
+
+              <div class="form-group">
+                <div class="visibility-section">
+                  <div class="text-subtitle2 q-mb-sm">Visibility</div>
+                  <q-option-group
+                    v-model="videoUploadForm.isPublic"
+                    :options="visibilityOptions"
+                    color="primary"
+                    type="radio"
+                  />
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <q-btn
+                  type="button"
+                  flat
+                  label="Cancel"
+                  @click="handleVideoUploadCancel"
+                />
+                <q-btn
+                  type="submit"
+                  color="primary"
+                  label="Upload Video"
+                  :loading="isUploadingVideo"
+                  :disable="!recordedVideoData"
+                />
+              </div>
+            </q-form>
+          </div>
+        </div>
+      </div>
+    </q-dialog>
   </div>
 </template>
 
@@ -461,9 +309,11 @@ import { showError, showSuccess, showConfirm } from 'src/utils/notification'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource, CameraDirection } from '@capacitor/camera'
 import GalleryItem from './GalleryItem.vue'
-import MediaViewer from './MediaViewer.vue'
+import EnhancedMediaViewer from './MediaViewer.vue'
 import EditMediaDialog from './EditMediaDialog.vue'
 import CameraCaptureDialog from './CameraCaptureDialog.vue'
+import VideoRecordingInterface from './VideoRecordingInterface.vue'
+import galleryService from 'src/services/api/gallery.service'
 
 // Props
 const props = defineProps({
@@ -481,66 +331,121 @@ const fileInput = ref(null)
 const viewMode = ref('grid')
 const searchTerm = ref('')
 const searchTimeout = ref(null)
-const isDragOver = ref(false)
-const dragCounter = ref(0)
 
 // Dialog states
-const showCategoryDialog = ref(false)
+const showMediaOptions = ref(false)
 const showMediaViewer = ref(false)
 const showEditDialog = ref(false)
-const showCameraOptions = ref(false)
 const showCameraCaptureDialog = ref(false)
-const selectedCategory = ref(null)
+const showVideoRecordingDialog = ref(false)
+const showVideoUploadDialog = ref(false)
+
+// Selected items
 const selectedViewItem = ref(null)
+const selectedViewIndex = ref(0)
 const selectedEditItem = ref(null)
 const capturedImageData = ref(null)
+const recordedVideoData = ref(null)
+
+// Upload states
+const isUploadingVideo = ref(false)
 
 // Platform detection
 const isNativePlatform = computed(() => Capacitor.isNativePlatform())
 
-// Options
-const mediaTypeOptions = [
-  { label: 'All Types', value: null, icon: 'all_inclusive' },
-  { label: 'Images', value: GALLERY_MEDIA_TYPES.IMAGE, icon: 'image' },
-  { label: 'Videos', value: GALLERY_MEDIA_TYPES.VIDEO, icon: 'videocam' },
-  { label: 'Documents', value: GALLERY_MEDIA_TYPES.DOCUMENT, icon: 'description' },
-  { label: 'Audio', value: GALLERY_MEDIA_TYPES.AUDIO, icon: 'audiotrack' }
-]
+// Filter options
+const selectedMediaTypes = ref([])
+const selectedCategories = ref([])
 
-const categoryOptions = [
-  { label: 'All Categories', value: null, icon: 'all_inclusive', color: 'grey' },
-  { label: 'Progress', value: GALLERY_CATEGORIES.PROGRESS, icon: 'timeline', color: 'primary' },
-  { label: 'Issues', value: GALLERY_CATEGORIES.ISSUE, icon: 'report_problem', color: 'negative' },
-  { label: 'Before', value: GALLERY_CATEGORIES.BEFORE, icon: 'history', color: 'info' },
-  { label: 'After', value: GALLERY_CATEGORIES.AFTER, icon: 'update', color: 'positive' },
-  { label: 'Blueprint', value: GALLERY_CATEGORIES.BLUEPRINT, icon: 'architecture', color: 'purple' }
-]
+const mediaTypeOptions = ref([
+  { label: 'Images', value: GALLERY_MEDIA_TYPES.IMAGE },
+  { label: 'Videos', value: GALLERY_MEDIA_TYPES.VIDEO },
+  { label: 'Documents', value: GALLERY_MEDIA_TYPES.DOCUMENT }
+])
 
-// Computed
-const filteredItems = computed(() => galleryStore.filteredItems)
-const selectedItems = computed(() => galleryStore.selectedItems)
-const selectedItemsCount = computed(() => galleryStore.selectedItemsCount)
-const hasSelectedItems = computed(() => galleryStore.hasSelectedItems)
-const filters = computed(() => galleryStore.filters)
-const uploadProgress = computed(() => galleryStore.uploadProgress)
-const hasMoreItems = computed(() => galleryStore.pagination.hasNext)
+const categoryOptions = ref([
+  { label: 'Progress', value: GALLERY_CATEGORIES.PROGRESS },
+  { label: 'Issues', value: GALLERY_CATEGORIES.ISSUE },
+  { label: 'Before', value: GALLERY_CATEGORIES.BEFORE },
+  { label: 'After', value: GALLERY_CATEGORIES.AFTER }
+])
 
-const hasActiveFilters = computed(() => {
-  return filters.value.mediaType ||
-         filters.value.mediaCategory ||
-         filters.value.searchTerm ||
-         filters.value.isPublic !== null
+const visibilityOptions = ref([
+  { label: 'Public', value: true },
+  { label: 'Private', value: false }
+])
+
+// Video upload form
+const videoUploadForm = ref({
+  caption: '',
+  category: GALLERY_CATEGORIES.PROGRESS,
+  isPublic: true
 })
 
-// Camera methods
-const openCameraOptions = () => {
-  showCameraOptions.value = true
+// Computed
+const filteredItems = computed(() => {
+  let items = galleryStore.galleryItems
+
+  // Apply search filter
+  if (searchTerm.value) {
+    const search = searchTerm.value.toLowerCase()
+    items = items.filter(item => 
+      (item.originalFileName || item.fileName || '').toLowerCase().includes(search) ||
+      (item.caption || '').toLowerCase().includes(search)
+    )
+  }
+
+  // Apply media type filter
+  if (selectedMediaTypes.value.length > 0) {
+    items = items.filter(item => selectedMediaTypes.value.includes(item.mediaType))
+  }
+
+  // Apply category filter
+  if (selectedCategories.value.length > 0) {
+    items = items.filter(item => selectedCategories.value.includes(item.mediaCategory))
+  }
+
+  return items
+})
+
+// Methods
+const toggleViewMode = () => {
+  viewMode.value = viewMode.value === 'grid' ? 'list' : 'grid'
 }
 
-const captureFromCamera = async (direction = 'rear') => {
+const triggerFileUpload = () => {
+  fileInput.value?.click()
+}
+
+const handleFileSelection = (event) => {
+  const files = event.target.files
+  if (files && files.length > 0) {
+    uploadFiles(files)
+  }
+  event.target.value = ''
+}
+
+const uploadFiles = async (files) => {
+  try {
+    const uploadData = {
+      nodeId: props.nodeId,
+      mediaCategory: GALLERY_CATEGORIES.PROGRESS,
+      isPublic: true
+    }
+
+    await galleryStore.uploadFiles(files, uploadData)
+    showSuccess(`${files.length} file(s) uploaded successfully`)
+  } catch (error) {
+    console.error('Upload failed:', error)
+    showError('Failed to upload files')
+  }
+}
+
+// Camera methods
+const captureFromCamera = async (direction) => {
   try {
     const image = await Camera.getPhoto({
-      quality: 80,
+      quality: 90,
       allowEditing: false,
       resultType: CameraResultType.DataUrl,
       source: CameraSource.Camera,
@@ -591,131 +496,85 @@ const captureFromGallery = async () => {
   }
 }
 
-// eslint-disable-next-line no-unused-vars
-const handleCameraCaptureSaved = async (uploadedItem) => {
-  showSuccess('Photo uploaded successfully')
-  await galleryStore.refreshGallery()
+// Video recording methods
+const startVideoRecording = () => {
+  showVideoRecordingDialog.value = true
 }
 
-const handleCameraCaptureClose = () => {
-  showCameraCaptureDialog.value = false
-  capturedImageData.value = null
-}
-
-// Existing methods remain the same...
-const triggerFileUpload = () => {
-  fileInput.value?.click()
-}
-
-const handleFileSelection = (event) => {
-  const files = event.target.files
-  if (files && files.length > 0) {
-    uploadFiles(files)
+const handleVideoRecordingComplete = (videoData) => {
+  recordedVideoData.value = {
+    ...videoData,
+    videoUrl: URL.createObjectURL(videoData.videoFile)  // This line should already be there
   }
-  event.target.value = ''
+  
+  showVideoRecordingDialog.value = false
+  showVideoUploadDialog.value = true
 }
 
-const uploadFiles = async (files) => {
+
+const handleVideoRecordingClose = () => {
+  showVideoRecordingDialog.value = false
+}
+
+const handleVideoUpload = async () => {
+  if (!recordedVideoData.value) return
+
   try {
+    isUploadingVideo.value = true
+
     const uploadData = {
       nodeId: props.nodeId,
-      mediaCategory: GALLERY_CATEGORIES.PROGRESS,
-      isPublic: true
+      mediaCategory: videoUploadForm.value.category,
+      caption: videoUploadForm.value.caption,
+      isPublic: videoUploadForm.value.isPublic,
+      metadata: recordedVideoData.value.metadata // Make sure metadata is included
     }
 
-    await galleryStore.uploadFiles(files, uploadData)
-    showSuccess(`${files.length} file(s) uploaded successfully`)
+    // Use the uploadMediaWithFlags method if available, otherwise fallback to regular upload
+    let result
+    if (galleryStore.uploadFiles) {
+      // Use the store's upload method
+      await galleryStore.uploadFiles([recordedVideoData.value.videoFile], uploadData)
+      result = { success: true }
+    } else {
+      // Direct service call
+      result = await galleryService.uploadMedia(recordedVideoData.value.videoFile, uploadData)
+    }
+    
+    if (result.success !== false) {
+      showSuccess('Video uploaded successfully')
+      handleVideoUploadCancel()
+      // Refresh gallery if store method available
+      if (galleryStore.refreshGallery) {
+        await galleryStore.refreshGallery()
+      }
+    } else {
+      throw new Error(result.error || 'Upload failed')
+    }
+    
   } catch (error) {
-    showError('Failed to upload files')
-    console.error('Upload error:', error)
+    console.error('Video upload failed:', error)
+    showError('Failed to upload video: ' + (error.message || 'Unknown error'))
+  } finally {
+    isUploadingVideo.value = false
   }
 }
 
-const handleSearch = (value) => {
-  if (searchTimeout.value) {
-    clearTimeout(searchTimeout.value)
+const handleVideoUploadCancel = () => {
+  showVideoUploadDialog.value = false
+  recordedVideoData.value = null
+  videoUploadForm.value = {
+    caption: '',
+    category: GALLERY_CATEGORIES.PROGRESS,
+    isPublic: true
   }
-
-  searchTimeout.value = setTimeout(() => {
-    galleryStore.setFilter('searchTerm', value)
-  }, 300)
 }
 
-const clearSearch = () => {
-  searchTerm.value = ''
-  galleryStore.setFilter('searchTerm', '')
-}
-
-const setFilter = (key, value) => {
-  galleryStore.setFilter(key, value)
-}
-
-const clearFilters = () => {
-  galleryStore.clearFilters()
-}
-
-const clearAllFilters = () => {
-  searchTerm.value = ''
-  galleryStore.clearFilters()
-}
-
-const refreshGallery = async () => {
-  await galleryStore.refreshGallery()
-  showSuccess('Gallery refreshed')
-}
-
-const selectAllVisible = () => {
-  galleryStore.selectAllItems()
-}
-
-const clearSelection = () => {
-  galleryStore.clearSelection()
-}
-
-const loadMore = async () => {
-  await galleryStore.loadNextPage()
-}
-
-// Item interactions
+// Gallery item handlers
 const handleItemClick = (item) => {
-  galleryStore.toggleItemSelection(item.recCode)
-}
-
-const handleItemSelect = (item) => {
-  galleryStore.toggleItemSelection(item.recCode)
-}
-
-const handleItemView = (item) => {
   selectedViewItem.value = item
+  selectedViewIndex.value = filteredItems.value.findIndex(i => i.recCode === item.recCode)
   showMediaViewer.value = true
-}
-
-const handleItemDownload = async (item) => {
-  try {
-    await galleryStore.downloadItem(item)
-    showSuccess('Download started')
-    // eslint-disable-next-line no-unused-vars
-  } catch (error) {
-    showError('Failed to download file')
-  }
-}
-
-const handleItemDelete = async (item) => {
-  const confirmed = await showConfirm({
-    title: 'Delete File',
-    message: `Are you sure you want to delete "${item.originalFileName || item.fileName}"?`,
-    ok: { label: 'Delete', color: 'negative' }
-  })
-
-  if (confirmed) {
-    try {
-      await galleryStore.removeGalleryItem(item.recCode)
-      showSuccess('File deleted successfully')
-      // eslint-disable-next-line no-unused-vars
-    } catch (error) {
-      showError('Failed to delete file')
-    }
-  }
 }
 
 const handleItemEdit = (item) => {
@@ -723,98 +582,32 @@ const handleItemEdit = (item) => {
   showEditDialog.value = true
 }
 
-// eslint-disable-next-line no-unused-vars
-const handleItemUpdated = (updatedItem) => {
-  showSuccess('File updated successfully')
-}
-
-// Bulk operations
-const bulkUpdateCategory = async () => {
-  if (!selectedCategory.value) return
-
-  try {
-    await galleryStore.bulkUpdateCategory(selectedItems.value, selectedCategory.value)
-    // eslint-disable-next-line no-unused-vars
-  } catch (error) {
-    showError('Failed to update category')
-  }
-}
-
-const bulkUpdateVisibility = async (isPublic) => {
-  try {
-    await galleryStore.bulkUpdateVisibility(selectedItems.value, isPublic)
-    // eslint-disable-next-line no-unused-vars
-  } catch (error) {
-    showError('Failed to update visibility')
-  }
-}
-
-const confirmBulkDelete = async () => {
-  const confirmed = await showConfirm({
-    title: 'Delete Files',
-    message: `Are you sure you want to delete ${selectedItemsCount.value} file(s)?`,
-    ok: { label: 'Delete', color: 'negative' }
-  })
+const handleItemDelete = async (item) => {
+  const confirmed = await showConfirm(
+    'Delete Media',
+    `Are you sure you want to delete "${item.originalFileName || item.fileName}"?`
+  )
 
   if (confirmed) {
     try {
-      await galleryStore.bulkDelete([...selectedItems.value])
-      // eslint-disable-next-line no-unused-vars
+      await galleryStore.deleteMedia(item.recCode)
+      showSuccess('Media deleted successfully')
     } catch (error) {
-      showError('Failed to delete files')
+      console.error('Delete failed:', error)
+      showError('Failed to delete media')
     }
   }
 }
 
-// Drag and Drop
-const handleDragOver = (e) => {
-  e.dataTransfer.dropEffect = 'copy'
-}
-
-// eslint-disable-next-line no-unused-vars
-const handleDragEnter = (e) => {
-  dragCounter.value++
-  isDragOver.value = true
-}
-
-// eslint-disable-next-line no-unused-vars
-const handleDragLeave = (e) => {
-  dragCounter.value--
-  if (dragCounter.value <= 0) {
-    isDragOver.value = false
-    dragCounter.value = 0
-  }
-}
-
-const handleDrop = (e) => {
-  isDragOver.value = false
-  dragCounter.value = 0
-
-  const files = Array.from(e.dataTransfer.files)
-  if (files.length > 0) {
-    uploadFiles(files)
-  }
-}
-
-// Media Viewer
-const handleViewerNavigate = (direction) => {
-  const currentIndex = filteredItems.value.findIndex(item => item.recCode === selectedViewItem.value.recCode)
-  let newIndex
-
-  if (direction === 'next') {
-    newIndex = currentIndex + 1
-    if (newIndex >= filteredItems.value.length) newIndex = 0
-  } else {
-    newIndex = currentIndex - 1
-    if (newIndex < 0) newIndex = filteredItems.value.length - 1
-  }
-
-  selectedViewItem.value = filteredItems.value[newIndex]
-}
-
+// Dialog handlers
 const handleViewerClose = () => {
   showMediaViewer.value = false
   selectedViewItem.value = null
+}
+
+const handleViewerNavigate = (index) => {
+  selectedViewIndex.value = index
+  selectedViewItem.value = filteredItems.value[index]
 }
 
 const handleEditClose = () => {
@@ -822,25 +615,61 @@ const handleEditClose = () => {
   selectedEditItem.value = null
 }
 
-// Lifecycle
-onMounted(async () => {
-  galleryStore.setCurrentNode(props.nodeId)
-  await galleryStore.loadGallery()
-  await galleryStore.loadGallerySummary()
+const handleItemUpdated = async () => {
+  showSuccess('Media updated successfully')
+  await galleryStore.refreshGallery()
+  handleEditClose()
+}
+
+const handleCameraCaptureSaved = async () => {
+  showSuccess('Photo uploaded successfully')
+  await galleryStore.refreshGallery()
+  handleCameraCaptureClose()
+}
+
+const handleCameraCaptureClose = () => {
+  showCameraCaptureDialog.value = false
+  capturedImageData.value = null
+}
+
+// Utility functions
+const formatDuration = (milliseconds) => {
+  const seconds = Math.floor(milliseconds / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+
+  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+// Search debouncing
+watch(searchTerm, () => {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = setTimeout(() => {
+    // Search is handled by computed property
+  }, 300)
 })
 
+// Load gallery on mount
+onMounted(async () => {
+  try {
+    galleryStore.setCurrentNode(props.nodeId)
+    await galleryStore.loadGallery()
+  } catch (error) {
+    console.error('Failed to load gallery:', error)
+    showError('Failed to load gallery')
+  }
+})
+
+// Cleanup
 onUnmounted(() => {
   if (searchTimeout.value) {
     clearTimeout(searchTimeout.value)
   }
-})
-
-// Watch for node changes
-watch(() => props.nodeId, async (newNodeId) => {
-  if (newNodeId) {
-    galleryStore.setCurrentNode(newNodeId)
-    await galleryStore.loadGallery()
-    await galleryStore.loadGallerySummary()
+  
+  if (recordedVideoData.value?.videoUrl) {
+    URL.revokeObjectURL(recordedVideoData.value.videoUrl)
   }
 })
 </script>
@@ -852,7 +681,7 @@ watch(() => props.nodeId, async (newNodeId) => {
   height: 100%;
 }
 
-.gallery-toolbar {
+.gallery-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -861,162 +690,213 @@ watch(() => props.nodeId, async (newNodeId) => {
   background: white;
   flex-shrink: 0;
 
-  .toolbar-left {
+  .actions-left,
+  .actions-right {
     display: flex;
     align-items: center;
+    gap: 12px;
   }
 
-  .toolbar-right {
-    display: flex;
-    align-items: center;
-  }
-}
-
-.selection-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(25, 118, 210, 0.1);
-  border-bottom: 1px solid rgba(25, 118, 210, 0.2);
-  flex-shrink: 0;
-
-  .selection-info {
-    display: flex;
-    align-items: center;
-    color: #1976d2;
-    font-weight: 500;
-  }
-
-  .selection-actions {
-    display: flex;
-    gap: 8px;
-  }
-}
-
-.upload-progress {
-  background: white;
-  border-bottom: 1px solid #e0e0e0;
-  flex-shrink: 0;
-
-  .upload-status {
-    font-size: 14px;
-    color: #666;
-    text-align: center;
+  .search-input {
+    min-width: 200px;
   }
 }
 
 .gallery-content {
   flex: 1;
   overflow-y: auto;
-  position: relative;
-  transition: all 0.3s ease;
-
-  &.drag-over {
-    border: 2px dashed #1976d2;
-    background: rgba(25, 118, 210, 0.05);
-  }
+  padding: 16px;
 }
 
-.loading-state,
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #666;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  height: 300px;
   text-align: center;
-  padding: 48px 24px;
+  color: #666;
 
-  .empty-actions {
+  h5 {
+    margin: 16px 0 8px;
+    font-weight: 500;
+  }
+
+  p {
+    margin-bottom: 24px;
+    opacity: 0.8;
+  }
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.gallery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+// Video Upload Dialog Styles
+.video-upload-container {
+  width: 100vw;
+  height: 100vh;
+  background: white;
+  display: flex;
+  flex-direction: column;
+}
+
+.video-upload-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+
+  h5 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+}
+
+.video-upload-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  overflow: hidden;
+}
+
+.video-preview-section {
+  background: #f8f9fa;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+}
+
+.video-preview-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+}
+
+.preview-video {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.video-info {
+  display: flex;
+  gap: 24px;
+  color: #666;
+
+  .info-item {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 12px;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
   }
 }
 
-.gallery-view {
-  padding: 16px;
-
-  &.gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
-  }
-
-  &.gallery-list {
-    .gallery-item-wrapper {
-      margin-bottom: 1px;
-    }
-  }
-}
-
-.load-more-container {
-  border-top: 1px solid #e0e0e0;
+.video-form-section {
+  padding: 24px;
+  overflow-y: auto;
   background: white;
 }
 
-.drag-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+.video-form {
+  max-width: 100%;
+}
 
-  .drag-content {
-    text-align: center;
-    pointer-events: none;
+.form-group {
+  margin-bottom: 24px;
+}
+
+.visibility-section {
+  .text-subtitle2 {
+    color: #666;
+    font-weight: 500;
   }
 }
 
-// Responsive
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid #e0e0e0;
+  margin-top: 24px;
+}
+
+// Mobile responsive
+@media (max-width: 1024px) {
+  .gallery-actions {
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+
+    .actions-left,
+    .actions-right {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .search-input {
+      min-width: 150px;
+    }
+  }
+
+  .video-upload-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .video-preview-section {
+    border-right: none;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 16px;
+  }
+
+  .video-form-section {
+    padding: 16px;
+  }
+}
+
 @media (max-width: 768px) {
-  .gallery-toolbar {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-
-    .toolbar-left,
-    .toolbar-right {
-      justify-content: center;
-    }
-  }
-
-  .selection-bar {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-
-    .selection-actions {
-      justify-content: center;
-    }
-  }
-
-  .gallery-view.gallery-grid {
+  .gallery-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
   }
-}
 
-@media (max-width: 480px) {
-  .gallery-view.gallery-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 8px;
-  }
-
-  .gallery-toolbar {
+  .gallery-content {
     padding: 12px;
   }
 
-  .empty-actions {
-    flex-direction: column;
-    align-items: center;
+  .video-upload-header {
+    padding: 16px;
   }
 }
 </style>

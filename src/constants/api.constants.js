@@ -1,8 +1,7 @@
 // src/constants/api.constants.js
 
-export const API_BASE_URL =
-  process.env.API_URL || "http://localhost:8090/api/v1";
-// export const API_BASE_URL = 'http://192.168.1.6:8090/api/v1'
+// export const API_BASE_URL = process.env.API_URL || 'http://localhost:8090/api/v1'
+export const API_BASE_URL = "http://192.168.1.4:8090/api/v1";
 // export const API_BASE_URL = '/api/v1'
 // export const API_BASE_URL = 'https://jetrealty.gorealla.ai/api/v1'
 export const API_ENDPOINTS = {

@@ -2,162 +2,105 @@
   <q-dialog
     v-model="isOpen"
     maximized
-    persistent
-    transition-show="fade"
-    transition-hide="fade"
     class="media-viewer-dialog"
+    @hide="handleDialogHide"
   >
-    <div class="media-viewer-container" @keydown="handleKeydown">
-      <!-- Header Bar -->
+    <div class="media-viewer-container">
+      <!-- Enhanced Header with Flag Timeline -->
       <div class="viewer-header">
         <div class="header-left">
-          <q-btn
-            icon="arrow_back"
-            flat
-            round
-            color="white"
-            @click="handleClose"
-          >
-            <q-tooltip>Close (Esc)</q-tooltip>
-          </q-btn>
-
+          <q-btn icon="close" flat round dense size="md" color="white" @click="handleClose" />
           <div class="file-info">
-            <div class="file-name">{{ item.originalFileName || item.fileName }}</div>
+            <div class="file-name">{{ item?.originalFileName || item?.fileName }}</div>
             <div class="file-details">
-              {{ formatFileSize(item.fileSize) }} • {{ item.mediaType }}
-              <span v-if="item.mediaCategory"> • {{ item.mediaCategory }}</span>
+              {{ getFileExtension() }} • {{ formatFileSize(item?.fileSize) }}
+              <span v-if="item?.mediaType === 'Video' && videoDuration"> • {{ formatDuration(videoDuration) }}</span>
             </div>
           </div>
         </div>
 
         <div class="header-center">
           <div class="navigation-info" v-if="items.length > 1">
-            {{ currentIndex + 1 }} of {{ items.length }}
+            {{ currentIndex + 1 }} / {{ items.length }}
           </div>
         </div>
 
         <div class="header-right">
-          <!-- Slideshow Toggle -->
-          <q-btn
-            v-if="canStartSlideshow"
-            :icon="isSlideshow ? 'pause' : 'slideshow'"
-            flat
-            round
-            color="white"
-            @click="toggleSlideshow"
-          >
-            <q-tooltip>{{ isSlideshow ? 'Pause Slideshow' : 'Start Slideshow' }}</q-tooltip>
-          </q-btn>
-
-          <!-- Zoom Controls (for images) -->
-          <template v-if="item.mediaType === 'Image'">
+          <!-- Video Timeline Controls (only for videos with flags) -->
+          <div v-if="item?.mediaType === 'Video' && hasVideoFlags" class="timeline-controls">
             <q-btn
-              icon="zoom_out"
+              icon="skip_previous"
               flat
               round
+              dense
+              size="sm"
               color="white"
-              @click="zoomOut"
-              :disable="zoomLevel <= 0.5"
+              @click="previousFlag"
+              :disable="!canGoPreviousFlag"
             >
-              <q-tooltip>Zoom Out (-)</q-tooltip>
+              <q-tooltip>Previous Flag</q-tooltip>
             </q-btn>
-
             <q-btn
-              icon="zoom_in"
+              icon="skip_next"
               flat
               round
+              dense
+              size="sm"
               color="white"
-              @click="zoomIn"
-              :disable="zoomLevel >= 3"
+              @click="nextFlag"
+              :disable="!canGoNextFlag"
             >
-              <q-tooltip>Zoom In (+)</q-tooltip>
+              <q-tooltip>Next Flag</q-tooltip>
             </q-btn>
+          </div>
 
-            <q-btn
-              icon="fit_screen"
-              flat
-              round
-              color="white"
-              @click="resetZoom"
-            >
-              <q-tooltip>Fit to Screen (0)</q-tooltip>
-            </q-btn>
-          </template>
-
-          <!-- Download -->
-          <q-btn
-            icon="download"
-            flat
-            round
-            color="white"
-            @click="handleDownload"
-          >
+          <q-btn icon="download" flat round dense size="md" color="white" @click="downloadMedia">
             <q-tooltip>Download</q-tooltip>
           </q-btn>
-
-          <!-- Edit -->
-          <q-btn
-            icon="edit"
-            flat
-            round
-            color="white"
-            @click="handleEdit"
-          >
-            <q-tooltip>Edit</q-tooltip>
-          </q-btn>
-
-          <!-- More Options -->
-          <q-btn
-            icon="more_vert"
-            flat
-            round
-            color="white"
-          >
-            <q-menu>
-              <q-list>
-                <q-item clickable v-close-popup @click="copyFileUrl">
-                  <q-item-section avatar>
-                    <q-icon name="link" />
-                  </q-item-section>
-                  <q-item-section>Copy Link</q-item-section>
-                </q-item>
-
-                <q-item clickable v-close-popup @click="openInNewTab">
-                  <q-item-section avatar>
-                    <q-icon name="open_in_new" />
-                  </q-item-section>
-                  <q-item-section>Open in New Tab</q-item-section>
-                </q-item>
-
-                <q-separator />
-
-                <q-item clickable v-close-popup @click="handleDelete">
-                  <q-item-section avatar>
-                    <q-icon name="delete" color="negative" />
-                  </q-item-section>
-                  <q-item-section>Delete</q-item-section>
-                </q-item>
-              </q-list>
-            </q-menu>
+          <q-btn icon="info" flat round dense size="md" color="white" @click="toggleInfo">
+            <q-tooltip>Info</q-tooltip>
           </q-btn>
         </div>
       </div>
 
-      <!-- Main Content Area -->
-      <div class="viewer-content" @click="handleContentClick">
+      <!-- Enhanced Video Timeline (for videos with flags) -->
+      <div v-if="item?.mediaType === 'Video' && hasVideoFlags" class="video-timeline-bar">
+        <div class="timeline-container">
+          <div
+            class="timeline-track"
+            @click="handleTimelineClick"
+            ref="timelineElement"
+          >
+            <div class="timeline-progress" :style="{ width: `${timelineProgress}%` }"></div>
+            
+            <!-- Flag markers on timeline -->
+            <div
+              v-for="flag in videoFlags"
+              :key="flag.id"
+              class="timeline-flag-marker"
+              :class="`flag-${flag.type}`"
+              :style="{ left: `${(flag.timestamp / videoDuration) * 100}%` }"
+              @click.stop="jumpToFlag(flag)"
+            >
+              <q-tooltip>{{ flag.type }} flag at {{ formatDuration(flag.timestamp) }}</q-tooltip>
+            </div>
+          </div>
+          
+          <div class="timeline-time">
+            {{ formatDuration(currentVideoTime) }} / {{ formatDuration(videoDuration) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Media Display Area -->
+      <div class="viewer-content">
         <!-- Navigation Arrows -->
         <div
           v-if="items.length > 1"
           class="nav-arrow nav-arrow-left"
           @click.stop="navigatePrevious"
         >
-          <q-btn
-            icon="chevron_left"
-            flat
-            round
-            size="lg"
-            color="white"
-          >
+          <q-btn icon="chevron_left" flat round size="lg" color="white">
             <q-tooltip>Previous (←)</q-tooltip>
           </q-btn>
         </div>
@@ -167,22 +110,16 @@
           class="nav-arrow nav-arrow-right"
           @click.stop="navigateNext"
         >
-          <q-btn
-            icon="chevron_right"
-            flat
-            round
-            size="lg"
-            color="white"
-          >
+          <q-btn icon="chevron_right" flat round size="lg" color="white">
             <q-tooltip>Next (→)</q-tooltip>
           </q-btn>
         </div>
 
-        <!-- Media Display -->
+        <!-- Media Container -->
         <div class="media-container">
-          <!-- Image Viewer -->
+          <!-- Enhanced Image Viewer with Flags -->
           <div
-            v-if="item.mediaType === 'Image'"
+            v-if="item?.mediaType === 'Image'"
             class="image-viewer"
             ref="imageContainer"
             @wheel.prevent="handleWheel"
@@ -201,25 +138,58 @@
               @error="handleImageError"
               draggable="false"
             />
+
+            <!-- Image Flags Overlay -->
+            <div class="image-flags-overlay">
+              <div
+                v-for="flag in imageFlags"
+                :key="flag.id"
+                class="image-flag"
+                :class="`flag-${flag.type}`"
+                :style="getImageFlagStyle(flag)"
+                @click="handleFlagClick(flag)"
+              >
+                <q-icon name="flag" size="20px" />
+                <q-tooltip>{{ flag.type }} flag</q-tooltip>
+              </div>
+            </div>
           </div>
 
-          <!-- Video Player -->
-          <div v-else-if="item.mediaType === 'Video'" class="video-viewer">
-            <video
-              ref="videoElement"
-              :src="item.fileUrl"
-              class="viewer-video"
-              controls
-              preload="metadata"
-              @loadedmetadata="handleVideoLoad"
-              @error="handleVideoError"
-            >
-              Your browser does not support the video tag.
-            </video>
+          <!-- Enhanced Video Player with Flags -->
+          <div v-else-if="item?.mediaType === 'Video'" class="video-viewer">
+            <div class="video-container" ref="videoContainer">
+              <video
+                ref="videoElement"
+                :src="item.fileUrl"
+                class="viewer-video"
+                controls
+                preload="metadata"
+                @loadedmetadata="handleVideoLoad"
+                @timeupdate="handleVideoTimeUpdate"
+                @error="handleVideoError"
+              >
+                Your browser does not support the video tag.
+              </video>
+
+              <!-- Video Flags Overlay -->
+              <div class="video-flags-overlay">
+                <div
+                  v-for="flag in visibleVideoFlags"
+                  :key="flag.id"
+                  class="video-flag"
+                  :class="`flag-${flag.type}`"
+                  :style="getVideoFlagStyle(flag)"
+                  @click="handleFlagClick(flag)"
+                >
+                  <q-icon name="flag" size="20px" />
+                  <q-tooltip>{{ flag.type }} flag at {{ formatDuration(flag.timestamp) }}</q-tooltip>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <!-- Audio Player -->
-          <div v-else-if="item.mediaType === 'Audio'" class="audio-viewer">
+          <!-- Audio Player (unchanged) -->
+          <div v-else-if="item?.mediaType === 'Audio'" class="audio-viewer">
             <div class="audio-container">
               <div class="audio-info">
                 <q-icon name="audiotrack" size="64px" color="white" />
@@ -244,14 +214,14 @@
             </div>
           </div>
 
-          <!-- Document Viewer -->
+          <!-- Document Viewer (unchanged) -->
           <div v-else class="document-viewer">
             <div class="document-container">
               <div class="document-info">
-                <q-icon :name="getFileIcon()" size="64px" color="white" />
-                <div class="document-title">{{ item.originalFileName || item.fileName }}</div>
+                <q-icon name="description" size="64px" color="white" />
+                <div class="document-title">{{ item?.originalFileName || item?.fileName }}</div>
                 <div class="document-details">
-                  {{ formatFileSize(item.fileSize) }} • {{ getFileExtension() }}
+                  {{ getFileExtension().toUpperCase() }} • {{ formatFileSize(item?.fileSize) }}
                 </div>
               </div>
 
@@ -260,155 +230,135 @@
                   color="primary"
                   icon="download"
                   label="Download"
-                  @click="handleDownload"
-                  class="q-mb-md"
-                />
-
-                <q-btn
-                  color="secondary"
-                  icon="open_in_new"
-                  label="Open in New Tab"
-                  @click="openInNewTab"
-                />
-              </div>
-
-              <!-- PDF Preview (if supported) -->
-              <div v-if="isPdf" class="pdf-preview">
-                <iframe
-                  :src="item.fileUrl"
-                  class="pdf-frame"
-                  @error="handlePdfError"
+                  @click="downloadMedia"
                 />
               </div>
             </div>
           </div>
         </div>
-
-        <!-- Loading Overlay -->
-        <div v-if="isLoading" class="loading-overlay">
-          <q-spinner-dots size="48px" color="white" />
-          <div class="loading-text">Loading...</div>
-        </div>
-
-        <!-- Error Overlay -->
-        <div v-if="hasError" class="error-overlay">
-          <q-icon name="error_outline" size="64px" color="negative" />
-          <div class="error-text">Failed to load media</div>
-          <q-btn
-            label="Download Instead"
-            color="primary"
-            @click="handleDownload"
-            class="q-mt-md"
-          />
-        </div>
       </div>
 
-      <!-- Bottom Info Panel (optional) -->
+      <!-- Info Panel -->
       <div v-if="showInfo" class="viewer-info">
         <div class="info-content">
-          <div v-if="item.caption" class="caption">
-            {{ item.caption }}
+          <div class="info-header">
+            <h6>Media Information</h6>
+            <q-btn icon="close" flat round dense size="sm" color="white" @click="toggleInfo" />
           </div>
 
           <div class="metadata">
             <div class="metadata-item">
-              <span class="label">Uploaded:</span>
-              <span>{{ formatDate(item.uploadedDate) }}</span>
+              <q-icon name="insert_drive_file" />
+              <span class="label">Name:</span>
+              <span>{{ item?.originalFileName || item?.fileName }}</span>
             </div>
-            <div class="metadata-item" v-if="item.uploadedByName">
-              <span class="label">By:</span>
-              <span>{{ item.uploadedByName }}</span>
+            
+            <div class="metadata-item">
+              <q-icon name="straighten" />
+              <span class="label">Size:</span>
+              <span>{{ formatFileSize(item?.fileSize) }}</span>
             </div>
-            <div class="metadata-item" v-if="imageDimensions">
+
+            <div v-if="item?.mediaType === 'Image' && imageDimensions" class="metadata-item">
+              <q-icon name="photo_size_select_large" />
               <span class="label">Dimensions:</span>
               <span>{{ imageDimensions }}</span>
             </div>
-            <div class="metadata-item" v-if="item.isPublic !== undefined">
-              <span class="label">Visibility:</span>
-              <q-chip
-                :icon="item.isPublic ? 'public' : 'lock'"
-                :color="item.isPublic ? 'positive' : 'warning'"
-                text-color="white"
-                size="sm"
+
+            <div v-if="item?.mediaType === 'Video' && videoDuration" class="metadata-item">
+              <q-icon name="schedule" />
+              <span class="label">Duration:</span>
+              <span>{{ formatDuration(videoDuration) }}</span>
+            </div>
+
+            <div class="metadata-item">
+              <q-icon name="calendar_today" />
+              <span class="label">Uploaded:</span>
+              <span>{{ formatDate(item?.uploadedDate) }}</span>
+            </div>
+
+            <div v-if="totalFlags > 0" class="metadata-item">
+              <q-icon name="flag" />
+              <span class="label">Flags:</span>
+              <span>{{ totalFlags }} flags added</span>
+            </div>
+          </div>
+
+          <!-- Flag Summary -->
+          <div v-if="totalFlags > 0" class="flags-summary">
+            <h6>Flags</h6>
+            <div class="flag-list">
+              <div
+                v-for="flag in allFlags"
+                :key="flag.id"
+                class="flag-item"
+                @click="jumpToFlag(flag)"
               >
-                {{ item.isPublic ? 'Public' : 'Private' }}
-              </q-chip>
+                <q-icon name="flag" :color="getFlagColor(flag.type)" />
+                <span class="flag-type">{{ flag.type }}</span>
+                <span v-if="flag.timestamp" class="flag-time">{{ formatDuration(flag.timestamp) }}</span>
+              </div>
             </div>
           </div>
         </div>
-
-        <q-btn
-          icon="info"
-          flat
-          round
-          color="white"
-          @click="showInfo = false"
-        >
-          <q-tooltip>Hide Info</q-tooltip>
-        </q-btn>
-      </div>
-
-      <!-- Show Info Button -->
-      <q-btn
-        v-if="!showInfo"
-        icon="info_outline"
-        flat
-        round
-        color="white"
-        class="info-toggle"
-        @click="showInfo = true"
-      >
-        <q-tooltip>Show Info</q-tooltip>
-      </q-btn>
-
-      <!-- Slideshow Timer -->
-      <div v-if="isSlideshow" class="slideshow-timer">
-        <q-linear-progress
-          :value="slideshowProgress"
-          color="primary"
-          size="4px"
-        />
       </div>
     </div>
+
+    <!-- Notes Dialog Integration -->
+    <q-dialog v-model="showNotesDialog" maximized>
+      <div class="notes-dialog-container">
+        <div class="notes-header">
+          <h5>Notes</h5>
+          <q-btn icon="close" flat round dense color="white" v-close-popup />
+        </div>
+        <div class="notes-content">
+          <NoteEditor
+            v-if="showNotesDialog"
+            v-model="currentNoteData"
+            :readonly="false"
+            @save-note="handleNoteSave"
+            @cancel-note="handleNoteCancel"
+          />
+        </div>
+      </div>
+    </q-dialog>
   </q-dialog>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { formatFileSize, getGalleryFileIcon } from 'src/utils/file'
-import { showError, showSuccess } from 'src/utils/notification'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import NoteEditor from 'components/NoteEditor.vue'
 
 // Props
 const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false
-  },
   item: {
     type: Object,
-    required: true
+    default: null
   },
   items: {
     type: Array,
     default: () => []
+  },
+  currentIndex: {
+    type: Number,
+    default: 0
+  },
+  modelValue: {
+    type: Boolean,
+    default: false
   }
 })
 
 // Emits
-const emit = defineEmits([
-  'update:modelValue',
-  'navigate',
-  'close',
-  'download',
-  'edit',
-  'delete'
-])
+const emit = defineEmits(['close', 'navigate', 'update:modelValue'])
 
 // Refs
-const imageContainer = ref(null)
 const imageElement = ref(null)
+const imageContainer = ref(null)
 const videoElement = ref(null)
+const videoContainer = ref(null)
 const audioElement = ref(null)
+const timelineElement = ref(null)
 
 // State
 const isOpen = computed({
@@ -416,138 +366,218 @@ const isOpen = computed({
   set: (value) => emit('update:modelValue', value)
 })
 
-const isLoading = ref(false)
-const hasError = ref(false)
 const showInfo = ref(false)
+const showNotesDialog = ref(false)
+const currentNoteData = ref('')
 
-// Image viewer state
+// Media state
+const isLoading = ref(true)
+const hasError = ref(false)
+const imageDimensions = ref('')
+const audioDuration = ref(0)
+const videoDuration = ref(0)
+const currentVideoTime = ref(0)
+
+// Flag state  
+const videoFlags = ref([])
+const imageFlags = ref([])
+const visibleVideoFlags = ref([])
+const currentFlagIndex = ref(-1)
+
+// Zoom and pan for images
 const zoomLevel = ref(1)
 const imagePosition = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
-const imageDimensions = ref('')
 
-// Media state
-const audioDuration = ref(0)
-
-// Slideshow state
-const isSlideshow = ref(false)
-const slideshowTimer = ref(null)
-const slideshowInterval = ref(3000) // 3 seconds
-const slideshowProgress = ref(0)
-const slideshowProgressTimer = ref(null)
-
-// Computed
-const currentIndex = computed(() => {
-  return props.items.findIndex(item => item.recCode === props.item.recCode)
+// Computed properties
+const imageStyles = computed(() => {
+  return {
+    transform: `scale(${zoomLevel.value}) translate(${imagePosition.value.x}px, ${imagePosition.value.y}px)`,
+    cursor: zoomLevel.value > 1 ? (isDragging.value ? 'grabbing' : 'grab') : 'default'
+  }
 })
 
-const canStartSlideshow = computed(() => {
-  return props.items.length > 1 &&
-         props.items.some(item => item.mediaType === 'Image')
+const hasVideoFlags = computed(() => videoFlags.value.length > 0)
+
+const timelineProgress = computed(() => {
+  if (!videoDuration.value) return 0
+  return (currentVideoTime.value / videoDuration.value) * 100
 })
 
-const isPdf = computed(() => {
-  return props.item.mimeType === 'application/pdf'
+const totalFlags = computed(() => videoFlags.value.length + imageFlags.value.length)
+
+const allFlags = computed(() => [...videoFlags.value, ...imageFlags.value])
+
+const canGoPreviousFlag = computed(() => {
+  return hasVideoFlags.value && currentFlagIndex.value > 0
 })
 
-const imageStyles = computed(() => ({
-  transform: `translate(${imagePosition.value.x}px, ${imagePosition.value.y}px) scale(${zoomLevel.value})`,
-  transformOrigin: 'center center',
-  transition: isDragging.value ? 'none' : 'transform 0.3s ease',
-  cursor: isDragging.value ? 'grabbing' : (zoomLevel.value > 1 ? 'grab' : 'default')
-}))
+const canGoNextFlag = computed(() => {
+  return hasVideoFlags.value && currentFlagIndex.value < videoFlags.value.length - 1
+})
 
 // Methods
-const handleClose = () => {
-  stopSlideshow()
-  emit('close')
+const loadMediaFlags = () => {
+  if (!props.item?.metadata?.flags) {
+    videoFlags.value = []
+    imageFlags.value = []
+    return
+  }
+
+  const flags = props.item.metadata.flags || []
+  
+  if (props.item.mediaType === 'Video') {
+    videoFlags.value = flags.filter(flag => flag.timestamp !== null)
+      .sort((a, b) => a.timestamp - b.timestamp)
+    imageFlags.value = []
+  } else if (props.item.mediaType === 'Image') {
+    imageFlags.value = flags.filter(flag => flag.timestamp === null)
+    videoFlags.value = []
+  } else {
+    videoFlags.value = []
+    imageFlags.value = []
+  }
+
+  updateVisibleVideoFlags()
 }
 
-const handleKeydown = (event) => {
-  switch (event.key) {
-    case 'Escape':
-      handleClose()
-      break
-    case 'ArrowLeft':
-      navigatePrevious()
-      break
-    case 'ArrowRight':
-      navigateNext()
-      break
-    case ' ':
-      event.preventDefault()
-      if (canStartSlideshow.value) {
-        toggleSlideshow()
-      }
-      break
-    case '+':
-    case '=':
-      if (props.item.mediaType === 'Image') {
-        zoomIn()
-      }
-      break
-    case '-':
-      if (props.item.mediaType === 'Image') {
-        zoomOut()
-      }
-      break
-    case '0':
-      if (props.item.mediaType === 'Image') {
-        resetZoom()
-      }
-      break
+const updateVisibleVideoFlags = () => {
+  if (!hasVideoFlags.value) {
+    visibleVideoFlags.value = []
+    return
+  }
+
+  const currentTime = currentVideoTime.value * 1000 // Convert to milliseconds
+  
+  visibleVideoFlags.value = videoFlags.value.filter(flag => {
+    const flagTime = flag.timestamp
+    const flagEndTime = flagTime + 500 // Flag visible for 500ms
+    return currentTime >= flagTime && currentTime <= flagEndTime
+  })
+}
+
+const getImageFlagStyle = (flag) => {
+  // Convert percentage coordinates back to pixel positions
+  return {
+    left: `${flag.coordinates.x}%`,
+    top: `${flag.coordinates.y}%`,
+    transform: 'translate(-50%, -50%)'
   }
 }
 
-const navigatePrevious = () => {
-  emit('navigate', 'previous')
-}
-
-const navigateNext = () => {
-  emit('navigate', 'next')
-}
-
-const handleContentClick = (event) => {
-  // Close on background click (not on media)
-  if (event.target.classList.contains('viewer-content') ||
-      event.target.classList.contains('media-container')) {
-    handleClose()
+const getVideoFlagStyle = (flag) => {
+  // Convert percentage coordinates back to pixel positions
+  return {
+    left: `${flag.coordinates.x}%`,
+    top: `${flag.coordinates.y}%`,
+    transform: 'translate(-50%, -50%)'
   }
 }
 
-// Zoom and Pan for Images
-const zoomIn = () => {
-  if (zoomLevel.value < 3) {
-    zoomLevel.value = Math.min(3, zoomLevel.value + 0.25)
+const getFlagColor = (flagType) => {
+  switch (flagType) {
+    case 'red': return 'red'
+    case 'green': return 'green'  
+    case 'yellow': return 'orange'
+    case 'other': return 'grey'
+    default: return 'grey'
   }
 }
 
-const zoomOut = () => {
-  if (zoomLevel.value > 0.5) {
-    zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.25)
+const handleFlagClick = () => {
+  // Open notes dialog when flag is clicked
+  currentNoteData.value = ''
+  showNotesDialog.value = true
+}
 
-    // Reset position if zoomed out too much
-    if (zoomLevel.value === 1) {
-      imagePosition.value = { x: 0, y: 0 }
+const jumpToFlag = (flag) => {
+  if (props.item.mediaType === 'Video' && flag.timestamp && videoElement.value) {
+    const timeInSeconds = flag.timestamp / 1000
+    videoElement.value.currentTime = timeInSeconds
+    
+    // Update current flag index
+    currentFlagIndex.value = videoFlags.value.findIndex(f => f.id === flag.id)
+  }
+}
+
+const nextFlag = () => {
+  if (canGoNextFlag.value) {
+    currentFlagIndex.value++
+    const flag = videoFlags.value[currentFlagIndex.value]
+    jumpToFlag(flag)
+  }
+}
+
+const previousFlag = () => {
+  if (canGoPreviousFlag.value) {
+    currentFlagIndex.value--
+    const flag = videoFlags.value[currentFlagIndex.value]
+    jumpToFlag(flag)
+  }
+}
+
+const handleTimelineClick = (event) => {
+  if (!timelineElement.value || !videoDuration.value) return
+  
+  const rect = timelineElement.value.getBoundingClientRect()
+  const clickX = event.clientX - rect.left
+  const percentage = clickX / rect.width
+  const targetTime = percentage * videoDuration.value
+  
+  if (videoElement.value) {
+    videoElement.value.currentTime = targetTime
+  }
+}
+
+const handleVideoTimeUpdate = () => {
+  if (videoElement.value) {
+    currentVideoTime.value = videoElement.value.currentTime
+    updateVisibleVideoFlags()
+    
+    // Update current flag index based on time
+    if (hasVideoFlags.value) {
+      const currentTimeMs = currentVideoTime.value * 1000
+      let closestIndex = -1
+      let closestDistance = Infinity
+      
+      videoFlags.value.forEach((flag, index) => {
+        const distance = Math.abs(flag.timestamp - currentTimeMs)
+        if (distance < closestDistance && distance < 1000) { // Within 1 second
+          closestDistance = distance
+          closestIndex = index
+        }
+      })
+      
+      currentFlagIndex.value = closestIndex
     }
   }
 }
 
+const handleNoteSave = () => {
+  showNotesDialog.value = false
+  // Handle note save logic here
+}
+
+const handleNoteCancel = () => {
+  showNotesDialog.value = false
+}
+
+// Image zoom and pan
 const resetZoom = () => {
   zoomLevel.value = 1
   imagePosition.value = { x: 0, y: 0 }
 }
 
 const handleWheel = (event) => {
-  if (props.item.mediaType !== 'Image') return
-
+  if (props.item?.mediaType !== 'Image') return
+  
   const delta = event.deltaY > 0 ? -0.1 : 0.1
   const newZoom = Math.min(3, Math.max(0.5, zoomLevel.value + delta))
-
+  
   if (newZoom !== zoomLevel.value) {
     zoomLevel.value = newZoom
-
+    
     if (zoomLevel.value === 1) {
       imagePosition.value = { x: 0, y: 0 }
     }
@@ -555,8 +585,8 @@ const handleWheel = (event) => {
 }
 
 const handleMouseDown = (event) => {
-  if (props.item.mediaType !== 'Image' || zoomLevel.value <= 1) return
-
+  if (props.item?.mediaType !== 'Image' || zoomLevel.value <= 1) return
+  
   isDragging.value = true
   dragStart.value = {
     x: event.clientX - imagePosition.value.x,
@@ -566,7 +596,7 @@ const handleMouseDown = (event) => {
 
 const handleMouseMove = (event) => {
   if (!isDragging.value) return
-
+  
   imagePosition.value = {
     x: event.clientX - dragStart.value.x,
     y: event.clientY - dragStart.value.y
@@ -577,11 +607,11 @@ const handleMouseUp = () => {
   isDragging.value = false
 }
 
-// Media Loading Handlers
+// Media loading handlers
 const handleImageLoad = () => {
   isLoading.value = false
   hasError.value = false
-
+  
   if (imageElement.value) {
     const img = imageElement.value
     imageDimensions.value = `${img.naturalWidth} × ${img.naturalHeight}`
@@ -596,6 +626,10 @@ const handleImageError = () => {
 const handleVideoLoad = () => {
   isLoading.value = false
   hasError.value = false
+  
+  if (videoElement.value) {
+    videoDuration.value = videoElement.value.duration
+  }
 }
 
 const handleVideoError = () => {
@@ -606,7 +640,7 @@ const handleVideoError = () => {
 const handleAudioLoad = () => {
   isLoading.value = false
   hasError.value = false
-
+  
   if (audioElement.value) {
     audioDuration.value = audioElement.value.duration
   }
@@ -617,100 +651,45 @@ const handleAudioError = () => {
   hasError.value = true
 }
 
-const handlePdfError = () => {
-  console.warn('PDF preview not supported, showing download option')
-}
-
-// Slideshow
-const toggleSlideshow = () => {
-  if (isSlideshow.value) {
-    stopSlideshow()
-  } else {
-    startSlideshow()
+// Navigation
+const navigatePrevious = () => {
+  if (props.currentIndex > 0) {
+    emit('navigate', props.currentIndex - 1)
   }
 }
 
-const startSlideshow = () => {
-  if (!canStartSlideshow.value) return
-
-  isSlideshow.value = true
-  startSlideshowTimer()
-  startProgressTimer()
-}
-
-const stopSlideshow = () => {
-  isSlideshow.value = false
-
-  if (slideshowTimer.value) {
-    clearTimeout(slideshowTimer.value)
-    slideshowTimer.value = null
-  }
-
-  if (slideshowProgressTimer.value) {
-    clearInterval(slideshowProgressTimer.value)
-    slideshowProgressTimer.value = null
-  }
-
-  slideshowProgress.value = 0
-}
-
-const startSlideshowTimer = () => {
-  slideshowTimer.value = setTimeout(() => {
-    if (isSlideshow.value) {
-      navigateNext()
-      startSlideshowTimer()
-    }
-  }, slideshowInterval.value)
-}
-
-const startProgressTimer = () => {
-  slideshowProgress.value = 0
-  const step = 0.01 // 1% per step
-  const stepTime = slideshowInterval.value * step // Time per step
-
-  slideshowProgressTimer.value = setInterval(() => {
-    if (slideshowProgress.value >= 1) {
-      slideshowProgress.value = 0
-    } else {
-      slideshowProgress.value += step
-    }
-  }, stepTime)
-}
-
-// Actions
-const handleDownload = () => {
-  emit('download', props.item)
-}
-
-const handleEdit = () => {
-  emit('edit', props.item)
-}
-
-const handleDelete = () => {
-  emit('delete', props.item)
-}
-
-const copyFileUrl = async () => {
-  try {
-    await navigator.clipboard.writeText(props.item.fileUrl)
-    showSuccess('File URL copied to clipboard')
-  // eslint-disable-next-line no-unused-vars
-  } catch (error) {
-    showError('Failed to copy URL')
+const navigateNext = () => {
+  if (props.currentIndex < props.items.length - 1) {
+    emit('navigate', props.currentIndex + 1)
   }
 }
 
-const openInNewTab = () => {
-  window.open(props.item.fileUrl, '_blank')
+// Dialog handlers
+const handleClose = () => {
+  emit('close')
 }
 
-// Utilities
-const getFileIcon = () => {
-  return getGalleryFileIcon(props.item.mediaType)
+const handleDialogHide = () => {
+  resetZoom()
+  showInfo.value = false
+  showNotesDialog.value = false
+}
+
+const toggleInfo = () => {
+  showInfo.value = !showInfo.value
+}
+
+// Utility functions
+const formatFileSize = (bytes) => {
+  if (!bytes) return ''
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i]
 }
 
 const getFileExtension = () => {
-  const fileName = props.item.originalFileName || props.item.fileName || ''
+  if (!props.item?.originalFileName && !props.item?.fileName) return ''
+  const fileName = props.item.originalFileName || props.item.fileName
   const parts = fileName.split('.')
   return parts.length > 1 ? parts.pop().toUpperCase() : ''
 }
@@ -721,11 +700,53 @@ const formatDate = (dateString) => {
 }
 
 const formatDuration = (seconds) => {
-  if (!seconds || !isFinite(seconds)) return ''
-
+  if (!seconds || !isFinite(seconds)) return '0:00'
+  
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = Math.floor(seconds % 60)
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+const downloadMedia = () => {
+  if (props.item?.fileUrl) {
+    const link = document.createElement('a')
+    link.href = props.item.fileUrl
+    link.download = props.item.originalFileName || props.item.fileName || 'download'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+}
+
+// Keyboard navigation
+const handleKeydown = (event) => {
+  if (!isOpen.value) return
+  
+  switch (event.key) {
+    case 'Escape':
+      handleClose()
+      break
+    case 'ArrowLeft':
+      navigatePrevious()
+      break
+    case 'ArrowRight':
+      navigateNext()
+      break
+    case 'ArrowUp':
+      if (hasVideoFlags.value) {
+        previousFlag()
+      }
+      break
+    case 'ArrowDown':
+      if (hasVideoFlags.value) {
+        nextFlag()
+      }
+      break
+    case 'i':
+    case 'I':
+      toggleInfo()
+      break
+  }
 }
 
 // Watchers
@@ -736,27 +757,21 @@ watch(() => props.item, () => {
   resetZoom()
   imageDimensions.value = ''
   audioDuration.value = 0
-
-  // Reset slideshow progress
-  if (isSlideshow.value) {
-    slideshowProgress.value = 0
-    if (slideshowProgressTimer.value) {
-      clearInterval(slideshowProgressTimer.value)
-      startProgressTimer()
-    }
-  }
+  videoDuration.value = 0
+  currentVideoTime.value = 0
+  currentFlagIndex.value = -1
+  
+  // Load flags for new item
+  loadMediaFlags()
 }, { immediate: true })
 
 watch(isOpen, (newValue) => {
   if (newValue) {
-    // Add keyboard listener
     nextTick(() => {
       document.addEventListener('keydown', handleKeydown)
     })
   } else {
-    // Remove keyboard listener and stop slideshow
     document.removeEventListener('keydown', handleKeydown)
-    stopSlideshow()
   }
 })
 
@@ -765,11 +780,11 @@ onMounted(() => {
   if (isOpen.value) {
     document.addEventListener('keydown', handleKeydown)
   }
+  loadMediaFlags()
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
-  stopSlideshow()
 })
 </script>
 
@@ -799,6 +814,7 @@ onUnmounted(() => {
   backdrop-filter: blur(10px);
   z-index: 100;
   color: white;
+  flex-shrink: 0;
 
   .header-left {
     display: flex;
@@ -846,7 +862,90 @@ onUnmounted(() => {
     gap: 8px;
     flex: 1;
     justify-content: flex-end;
+
+    .timeline-controls {
+      display: flex;
+      gap: 4px;
+      margin-right: 8px;
+    }
   }
+}
+
+.video-timeline-bar {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  padding: 12px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.timeline-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.timeline-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  position: relative;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+.timeline-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #00bcd4, #2196f3);
+  border-radius: 3px;
+  transition: width 0.1s ease;
+}
+
+.timeline-flag-marker {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  z-index: 2;
+
+  &.flag-red {
+    background: #ff4444;
+    box-shadow: 0 0 6px rgba(255, 68, 68, 0.6);
+  }
+
+  &.flag-green {
+    background: #44ff44;
+    box-shadow: 0 0 6px rgba(68, 255, 68, 0.6);
+  }
+
+  &.flag-yellow {
+    background: #ffaa44;
+    box-shadow: 0 0 6px rgba(255, 170, 68, 0.6);
+  }
+
+  &.flag-other {
+    background: #888888;
+    box-shadow: 0 0 6px rgba(136, 136, 136, 0.6);
+  }
+
+  &:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+}
+
+.timeline-time {
+  color: white;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  min-width: 100px;
+  text-align: right;
 }
 
 .viewer-content {
@@ -889,6 +988,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  position: relative;
 
   .viewer-image {
     max-width: 100%;
@@ -898,18 +998,69 @@ onUnmounted(() => {
   }
 }
 
+.image-flags-overlay,
+.video-flags-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.image-flag,
+.video-flag {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 6;
+
+  &.flag-red {
+    color: #ff4444;
+  }
+
+  &.flag-green {
+    color: #44ff44;
+  }
+
+  &.flag-yellow {
+    color: #ffaa44;
+  }
+
+  &.flag-other {
+    color: #888888;
+  }
+
+  &:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+}
+
 .video-viewer {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
 
-  .viewer-video {
-    max-width: 100%;
-    max-height: 100%;
-    outline: none;
-  }
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewer-video {
+  max-width: 100%;
+  max-height: 100%;
+  outline: none;
 }
 
 .audio-viewer {
@@ -923,28 +1074,20 @@ onUnmounted(() => {
     text-align: center;
     color: white;
 
-    .audio-info {
-      margin-bottom: 32px;
+    .audio-title {
+      font-size: 24px;
+      margin: 16px 0;
+      font-weight: 500;
+    }
 
-      .audio-title {
-        font-size: 24px;
-        font-weight: 500;
-        margin: 16px 0 8px;
-        max-width: 600px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .audio-details {
-        font-size: 16px;
-        opacity: 0.8;
-      }
+    .audio-details {
+      opacity: 0.8;
+      margin-bottom: 24px;
     }
 
     .viewer-audio {
       width: 400px;
-      max-width: 100%;
+      max-width: 80vw;
     }
   }
 }
@@ -959,126 +1102,138 @@ onUnmounted(() => {
   .document-container {
     text-align: center;
     color: white;
-    max-width: 600px;
-    width: 100%;
+    padding: 48px;
 
-    .document-info {
+    .document-title {
+      font-size: 24px;
+      margin: 16px 0;
+      font-weight: 500;
+    }
+
+    .document-details {
+      opacity: 0.8;
       margin-bottom: 32px;
-
-      .document-title {
-        font-size: 24px;
-        font-weight: 500;
-        margin: 16px 0 8px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .document-details {
-        font-size: 16px;
-        opacity: 0.8;
-      }
     }
-
-    .document-actions {
-      margin-bottom: 32px;
-
-      .q-btn {
-        margin: 0 8px;
-      }
-    }
-
-    .pdf-preview {
-      .pdf-frame {
-        width: 100%;
-        height: 600px;
-        border: none;
-        background: white;
-        border-radius: 8px;
-      }
-    }
-  }
-}
-
-.loading-overlay,
-.error-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  z-index: 20;
-
-  .loading-text,
-  .error-text {
-    margin-top: 16px;
-    font-size: 18px;
   }
 }
 
 .viewer-info {
-  position: absolute;
-  bottom: 0;
-  left: 0;
+  position: fixed;
   right: 0;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(10px);
-  color: white;
-  padding: 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  top: 0;
+  height: 100vh;
+  width: 400px;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(20px);
+  z-index: 200;
+  overflow-y: auto;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 
   .info-content {
-    flex: 1;
+    padding: 24px;
+    color: white;
+  }
 
-    .caption {
-      font-size: 16px;
+  .info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    h6 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+  }
+
+  .metadata {
+    margin-bottom: 32px;
+
+    .metadata-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
       margin-bottom: 16px;
-      line-height: 1.5;
+      font-size: 14px;
+
+      .label {
+        font-weight: 500;
+        min-width: 80px;
+      }
+    }
+  }
+
+  .flags-summary {
+    h6 {
+      margin: 0 0 16px 0;
+      font-size: 16px;
+      font-weight: 600;
     }
 
-    .metadata {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 24px;
-
-      .metadata-item {
+    .flag-list {
+      .flag-item {
         display: flex;
         align-items: center;
         gap: 8px;
+        padding: 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-bottom: 4px;
+        transition: background 0.2s ease;
 
-        .label {
-          opacity: 0.8;
+        &:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .flag-type {
+          text-transform: capitalize;
           font-weight: 500;
+        }
+
+        .flag-time {
+          margin-left: auto;
+          font-size: 12px;
+          opacity: 0.8;
+          font-family: 'Courier New', monospace;
         }
       }
     }
   }
 }
 
-.info-toggle {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  z-index: 10;
+.notes-dialog-container {
+  width: 100vw;
+  height: 100vh;
+  background: white;
+  display: flex;
+  flex-direction: column;
+
+  .notes-header {
+    background: linear-gradient(135deg, #26a69a 0%, #00897b 100%);
+    color: white;
+    padding: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    h5 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+    }
+  }
+
+  .notes-content {
+    flex: 1;
+    overflow: hidden;
+    padding: 24px;
+  }
 }
 
-.slideshow-timer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-}
-
-// Responsive
+// Mobile responsive
 @media (max-width: 768px) {
   .viewer-header {
     padding: 12px 16px;
@@ -1111,6 +1266,15 @@ onUnmounted(() => {
     }
   }
 
+  .video-timeline-bar {
+    padding: 8px 16px;
+  }
+
+  .timeline-flag-marker {
+    width: 10px;
+    height: 10px;
+  }
+
   .nav-arrow {
     &.nav-arrow-left {
       left: 12px;
@@ -1122,57 +1286,37 @@ onUnmounted(() => {
   }
 
   .viewer-info {
-    padding: 16px;
-
-    .metadata {
-      gap: 16px;
-
-      .metadata-item {
-        font-size: 14px;
-      }
+    width: 100vw;
+    
+    .info-content {
+      padding: 16px;
     }
   }
 
-  .audio-viewer .audio-container {
-    .audio-title {
-      font-size: 18px;
+  .notes-dialog-container {
+    .notes-header {
+      padding: 16px;
     }
 
-    .viewer-audio {
-      width: 100%;
-    }
-  }
-
-  .document-viewer .document-container {
-    padding: 16px;
-
-    .document-title {
-      font-size: 18px;
-    }
-
-    .pdf-preview .pdf-frame {
-      height: 400px;
+    .notes-content {
+      padding: 16px;
     }
   }
 }
 
-@media (max-width: 480px) {
-  .viewer-header {
-    .header-left .file-info .file-name {
-      max-width: 150px;
-    }
+// Animation keyframes
+@keyframes flag-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
   }
-
-  .info-toggle {
-    bottom: 16px;
-    right: 16px;
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1.1);
   }
 }
 
-// Touch gestures for mobile
-@media (hover: none) and (pointer: coarse) {
-  .image-viewer .viewer-image {
-    cursor: default;
-  }
+.video-flag {
+  animation: flag-pulse 2s infinite;
 }
 </style>
