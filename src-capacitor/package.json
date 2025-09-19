@@ -1,0 +1,13 @@
+{
+  "name": "com.heptanesia.gorealla",
+  "version": "0.0.1",
+  "description": "A comprehensive solution for Real Estate Developers, Contractors, Architects and Interior Designers",
+  "author": "Heptanesia IT Services Private Limited",
+  "private": true,
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}
